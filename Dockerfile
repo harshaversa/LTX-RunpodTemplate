@@ -16,3 +16,16 @@ RUN for d in checkpoints text_encoders latent_upscale_models loras; do \
       rm -rf "/comfyui/models/$d"; \
       ln -sfn "/runpod-volume/models/$d" "/comfyui/models/$d"; \
     done
+
+# Bucket output for large videos. A 10s/720p LTX clip overflows RunPod's inline
+# base64 status payload and comes back empty ("COMPLETED but no output"); routing it
+# to a bucket fixes that (the provider re-hosts the returned URL into our own GCS).
+# Stock worker-comfyui calls `rp_upload.upload_image(job_id, temp_file_path)` with NO
+# bucket name, so the runpod SDK defaults to a "%m-%y" bucket (e.g. 06-30) — never
+# ours. There is no BUCKET_NAME env hook, so patch the single call site to pass it
+# (os is already imported in handler.py @5.8.6). The grep guard FAILS the build if a
+# worker-comfyui bump ever changes that call site, so a silent no-match can't ship a
+# broken upload. Set on the endpoint: BUCKET_ENDPOINT_URL=https://storage.googleapis.com,
+# BUCKET_NAME=itihasik-greenrain, BUCKET_ACCESS_KEY_ID/SECRET = a GCS HMAC key.
+RUN sed -i 's|rp_upload.upload_image(job_id, temp_file_path)|rp_upload.upload_image(job_id, temp_file_path, bucket_name=os.environ.get("BUCKET_NAME"))|' /handler.py \
+ && grep -q 'bucket_name=os.environ.get("BUCKET_NAME")' /handler.py
