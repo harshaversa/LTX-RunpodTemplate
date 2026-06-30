@@ -29,3 +29,9 @@ RUN for d in checkpoints text_encoders latent_upscale_models loras; do \
 # BUCKET_NAME=itihasik-greenrain, BUCKET_ACCESS_KEY_ID/SECRET = a GCS HMAC key.
 RUN sed -i 's|rp_upload.upload_image(job_id, temp_file_path)|rp_upload.upload_image(job_id, temp_file_path, bucket_name=os.environ.get("BUCKET_NAME"))|' /handler.py \
  && grep -q 'bucket_name=os.environ.get("BUCKET_NAME")' /handler.py
+
+# botocore >=1.36 adds default flexible-checksum headers to PutObject that GCS's
+# S3-compatible API rejects -> SignatureDoesNotMatch. Disable them so the HMAC upload
+# to storage.googleapis.com signs cleanly. (Verified: GCS PUT works only with these off.)
+ENV AWS_REQUEST_CHECKSUM_CALCULATION=when_required \
+    AWS_RESPONSE_CHECKSUM_VALIDATION=when_required
